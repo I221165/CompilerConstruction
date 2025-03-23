@@ -1,4 +1,4 @@
-# LL(1) Parser Implementation: Complete Breakdown
+# LL(1) Parser Implementation
 
 ## Table of Contents
 1. [Introduction](#introduction)
