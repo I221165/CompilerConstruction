@@ -1,235 +1,245 @@
-# CompilerConstruction
+# LL(1) Parser Implementation: Complete Breakdown
 
+## Table of Contents
+1. [Introduction](#introduction)
+2. [Program Overview](#program-overview)
+3. [Key Data Structures](#key-data-structures)
+4. [Grammar Processing](#grammar-processing)
+   - [Reading from File](#reading-from-file)
+   - [Handling Special Grammar Cases](#handling-special-grammar-cases)
+5. [Left Factoring](#left-factoring)
+6. [Left Recursion Elimination](#left-recursion-elimination)
+7. [Symbol Identification](#symbol-identification)
+8. [FIRST Set Calculation](#first-set-calculation)
+9. [FOLLOW Set Calculation](#follow-set-calculation)
+10. [Parsing Table Construction](#parsing-table-construction)
+11. [Implementation Details](#implementation-details)
+12. [Conclusion](#conclusion)
 
-This compiler implementation focuses on demonstrating the foundational concepts of compiler design, particularly the front-end components. The project implements Thompson's construction algorithm to build NFAs from regular expressions, converts these NFAs to DFAs using the subset construction algorithm, and uses these DFAs for efficient lexical analysis.
+## 1. Introduction
 
-## Components
+This document provides a detailed explanation of a C program that implements an LL(1) parser generator. The program reads a context-free grammar from a file, performs necessary transformations to make it suitable for LL(1) parsing, calculates FIRST and FOLLOW sets, and finally constructs a parsing table.
 
-The project is organized into several major components:
+LL(1) parsers are top-down parsers that analyze input from left to right, constructing a leftmost derivation, and using a single token of lookahead to make parsing decisions. They are powerful tools for implementing compilers and interpreters.
 
-### 1. NFA Construction (`State` and `NFA` classes)
-The NFA construction component provides the foundation for representing regular expressions as finite automata:
+## 2. Program Overview
 
-- **State Class**: Represents states in an automaton with:
-  - Unique identifier for each state
-  - Boolean flag indicating whether it's a final (accepting) state
-  - Map of transitions, where keys are characters and values are lists of target states
-  - Support for epsilon transitions using null as the character key
+The program performs the following major operations:
 
-- **NFA Class**: Simple container for an automaton with:
-  - Start state for beginning execution
-  - End state to mark acceptance
-  - Used as building blocks that can be combined to form more complex automata
+1. Reads a context-free grammar from a file
+2. Processes special grammar notations (like T' to represent T-prime)
+3. Performs left factoring on the grammar
+4. Eliminates left recursion from the grammar
+5. Identifies terminals and non-terminals
+6. Calculates FIRST sets for all non-terminals
+7. Calculates FOLLOW sets for all non-terminals
+8. Constructs the LL(1) parsing table
+9. Displays all intermediate and final results
 
-This component is designed to handle the non-deterministic nature of regex matching, where multiple possible paths through the automaton can exist simultaneously.
+## 3. Key Data Structures
 
-### 2. Regex Parser (`RegexParser` class)
-The Regex Parser implements Thompson's construction algorithm to convert regular expressions to NFAs:
+The program uses several important data structures:
 
-- **Recursive Descent Parser**: Implements a grammar for regular expressions with methods for each non-terminal:
-  - `expression()`: Handles alternation with the `|` operator
-  - `term()`: Manages concatenation of factors
-  - `factor()`: Processes repetition operators (`*` and `+`)
-  - `base()`: Handles literals, parenthesized expressions, character classes, and escapes
+- `production[50][10]`: Stores production rules (up to 50 rules, each with up to 10 characters)
+- `calc_first[10][100]`: Stores FIRST sets for non-terminals
+- `calc_follow[10][100]`: Stores FOLLOW sets for non-terminals
+- `terminals[10]` and `terminals_count`: Stores terminal symbols and their count
+- `non_terminals[10]` and `non_terminals_count`: Stores non-terminal symbols and their count
+- `parsing_table[10][10][10]`: 3D array representing the parsing table
+- `nt_map[26][2]`: Maps non-terminal symbols with apostrophes (like T') to new symbols (like X, Y, Z)
 
-- **Character Class Support**: Processes both standard and negated character classes:
-  - `[a-z]` matches any character in the specified range
-  - `[^abc]` matches any character not in the specified set
+## 4. Grammar Processing
 
-- **Construction Operations**: Implements fundamental operations for building NFAs:
-  - `literal()`: Creates a simple NFA for a single character
-  - `concatenate()`: Joins two NFAs sequentially
-  - `union()`: Creates an NFA that matches either of two patterns
-  - `kleeneClosure()`: Creates an NFA for zero or more repetitions (*)
-  - `cloneNFA()`: Creates independent copies of NFAs for operations like the plus operator
+### Reading from File
 
-This component translates the textual regex patterns into executable automata representations, forming the basis for token recognition.
+The function `read_grammar_from_file()` handles reading grammar rules from a text file. It processes each line as follows:
 
-### 3. NFA to DFA Conversion (`NfaToDfaConverter` class)
-This component implements the subset construction algorithm to convert NFAs to more efficient DFAs:
+1. Removes whitespace
+2. Identifies the production rule by finding the "->" symbol
+3. Separates the left-hand side (LHS) and right-hand side (RHS)
+4. Handles special cases like non-terminals with apostrophes (T')
+5. Splits alternatives (separated by "|") into separate production rules
+6. Converts the rules into the internal format used by the program
 
-- **DFA State**: Represents a set of NFA states, with:
-  - Collection of NFA states that it encompasses
-  - Final status determined by containing any final NFA state
-  - Deterministic transitions (one target state per input symbol)
-
-- **Epsilon Closure**: Computes all states reachable through epsilon transitions from a set of states:
-  - Uses depth-first traversal to find all reachable states
-  - Essential for handling non-determinism in the original NFA
-
-- **Move Operation**: Computes the set of states reachable by a specific input symbol:
-  - Applied before epsilon closure to handle all possible transitions
-
-- **Conversion Process**:
-  - Starts with the epsilon closure of the NFA start state
-  - For each new DFA state and each possible input symbol, computes transitions
-  - Creates new DFA states as needed
-  - Continues until all reachable DFA states are processed
-
-The conversion significantly improves runtime performance by eliminating non-determinism, enabling O(n) matching time for input strings of length n.
-
-### 4. Token Definitions and Lexical Analyzer (`Lexer` class)
-The lexical analyzer component converts source text into a stream of tokens:
-
-- **Token Class**: Represents recognized lexical units with:
-  - Token type (keyword, identifier, operator, etc.)
-  - Lexeme (the actual text matched)
-  - Line number for error reporting
-
-- **TokenDefinition Class**: Links token types to their regex patterns:
-  - Stores the token type and regex pattern
-  - Compiles patterns into NFAs and then DFAs
-  - Provides a matching mechanism for token recognition
-
-- **Lexer Class**: Processes input text to produce tokens:
-  - Keeps track of position and line number
-  - At each position, finds the longest matching token
-  - Handles whitespace and newlines
-  - Reports unrecognized characters as errors
-  - Builds a complete list of tokens for the parser
-
-- **Token Types**: Supports a variety of token types including:
-  - Keywords (`int`, `float`, `char`, `bool`)
-  - Comments (both single-line and multi-line)
-  - Character literals with escape sequences
-  - Floating-point and integer literals
-  - Boolean literals (`true`, `false`)
-  - Operators and punctuation
-  - Identifiers
-
-This component forms the first phase of compilation, breaking the source code into meaningful tokens for syntactic analysis.
-
-### 5. Symbol Table and Scope Management
-This component tracks variables and their properties across different scopes:
-
-- **SymbolTableEntry Class**: Stores information about declared variables:
-  - Name (identifier)
-  - Type (int, float, bool, etc.)
-  - Scope (global or local)
-  - Memory address (for code generation)
-
-- **SymbolTable Class**: Maps identifiers to their properties:
-  - Adds new entries for declarations
-  - Provides lookup functionality
-  - Supports displaying all entries for debugging
-
-- **ScopeManager Class**: Handles nested lexical scopes:
-  - Maintains a stack of symbol tables
-  - Global scope at the bottom, with local scopes pushed and popped
-  - Creates new scopes when entering blocks (`{`)
-  - Removes scopes when exiting blocks (`}`)
-  - Provides access to the current scope for declarations and lookups
-  - Simulates memory allocation for variables
-
-This component supports basic semantic analysis, tracking variable declarations and providing information for type checking and code generation.
-
-### 6. Error Handling (`ErrorHandler` class)
-The error handling component provides mechanisms for reporting and tracking compilation errors:
-
-- **Error Collection**: Maintains a list of all errors encountered:
-  - Stores error messages with line numbers
-  - Allows bulk reporting at the end of compilation
-
-- **Error Reporting**: Provides methods to report errors:
-  - `reportError(message, line)`: Records an error with line information
-  - Outputs errors to stderr for immediate feedback
-
-- **Error Status**: Allows checking if errors occurred:
-  - `hasErrors()`: Returns true if any errors were detected
-  - Useful for deciding whether to proceed to later compilation phases
-
-- **Error Display**: Supports displaying all collected errors:
-  - `displayErrors()`: Outputs all recorded errors
-  - Useful for final error reporting
-
-This component ensures that compilation errors are properly tracked and reported, improving the debugging experience.
-
-## Regular Expression Engine
-
-The regular expression engine is a central component of this compiler. It supports:
-
-- **Basic Operations**: Concatenation, alternation (`|`), Kleene star (`*`), and plus operator (`+`)
-- **Grouping**: Parentheses for grouping expressions
-- **Character Classes**: Both standard (`[a-z]`) and negated (`[^abc]`) classes
-- **Escape Sequences**: Escaping special characters with backslash
-
-The parser implements a recursive descent approach with the following grammar:
-
-```
-expression : term ('|' term)*
-term       : factor+
-factor     : base ('*' | '+')*
-base       : literal | '(' expression ')' | character class | escape sequence
+```c
+void read_grammar_from_file(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    /* Process each line from the file... */
+}
 ```
 
-### Thompson's Construction
+The internal format represents production rules as follows:
+- First character: Non-terminal on the left-hand side
+- Second character: '=' (separator)
+- Remaining characters: Right-hand side of the production
 
-The parser uses Thompson's construction algorithm to build NFAs for regular expressions:
+For example, "A -> aB | c" would be stored as two productions: "A=aB" and "A=c".
 
-- **Literal**: Creates a simple two-state NFA with a transition labeled by the literal
-- **Concatenation**: Joins two NFAs by connecting the end state of the first to the start state of the second
-- **Alternation (Union)**: Creates a new start state with epsilon transitions to the start states of both NFAs
-- **Kleene Star**: Adds epsilon transitions to allow skipping the NFA or repeating it multiple times
-- **Plus Operator**: Implemented as concatenation of the NFA with its Kleene star closure
+### Handling Special Grammar Cases
 
-## Lexical Analyzer
+The program has special handling for:
 
-The lexical analyzer uses the regex engine to tokenize source code:
+1. **Non-terminals with apostrophes**: When a non-terminal like T' appears, it's replaced with an available uppercase letter (starting from X, Y, Z).
+2. **Epsilon productions**: The empty string is represented as '#'.
+3. **Multiple alternatives**: Rules with alternatives (using the '|' symbol) are split into separate productions.
 
-1. Token types are defined with regular expression patterns
-2. These patterns are compiled into DFAs
-3. The lexer scans input, finding the longest matching token at each position
-4. Tokens are annotated with their type, lexeme (actual text), and line number
-
-Supported token types include:
-- Keywords (`int`, `float`, `char`, `bool`)
-- Comments (both single-line and multi-line)
-- Character literals
-- Floating-point and integer numbers
-- Boolean literals
-- Operators and punctuation
-- Identifiers
-
-## Symbol Table and Scope Management
-
-The compiler includes a scope-aware symbol table:
-
-- **Symbol Table**: Maps identifiers to their properties (type, scope, memory address)
-- **Scope Manager**: Handles nested scopes using a stack of symbol tables
-- **Memory Assignment**: Simulates memory allocation for variables
-
-The implementation supports:
-- Global and local scopes
-- Variable declarations
-- Scope entry and exit (via `{` and `}`)
-
-## Error Handling
-
-The error handler collects and reports errors during compilation:
-- Reports unrecognized tokens with line numbers
-- Maintains a list of all errors encountered
-- Provides methods to check for and display errors
-
-## Usage Example
-
-The main class demonstrates the compiler in action with a sample source code snippet:
-
-```java
-String sourceCode = "int main()  \n"
-    + "   int x = 0;  \n"
-    + "   bool y = 0;  \n"
-    + "   // multi-line \n comment */  \n"
-    + "   {   bool l = true;  \n"
-    + "       int a = 0;  \n"
-    + "       x = x + y * a - 3 % 2 ^ 2;  \n"
-    + "       return 0;  \n"
-    + "   }";
+```c
+char get_nt_replacement(char c) {
+    // Start with Available non-terminals from X to Z
+    static char available = 'X';
+    /* Get or create a replacement for non-terminals with apostrophes */
+}
 ```
 
-The compiler:
-1. Defines and compiles token patterns
-2. Tokenizes the source code
-3. Simulates scope management and variable declarations
-4. Displays tokens, symbol tables, and any errors
+## 5. Left Factoring
 
-This example demonstrates lexical analysis, scope handling, and basic error reporting in a compact form.
+Left factoring is a grammar transformation that involves factoring out common prefixes from production alternatives. The function `perform_left_factoring()` implements this process:
+
+1. For each production rule:
+   - Find alternatives that share a common prefix
+   - Extract the common prefix
+   - Create a new non-terminal
+   - Replace the original production with a factored version
+
+```c
+void perform_left_factoring() {
+    /* Find common prefixes and factor them out */
+}
+```
+
+For example, the rule "A -> αβ | αγ" would be transformed into:
+- "A -> αX"
+- "X -> β | γ"
+
+where X is a new non-terminal.
+
+## 6. Left Recursion Elimination
+
+Left recursion makes top-down parsing problematic. The program eliminates it through two functions:
+
+1. `eliminate_immediate_left_recursion()`: Handles direct left recursion (e.g., "A -> Aα | β")
+2. `remove_left_recursion()`: Coordinates the overall process
+
+```c
+void eliminate_immediate_left_recursion(int prod_index) {
+    /* Transform productions with immediate left recursion */
+}
+
+void remove_left_recursion() {
+    /* Coordinate the left recursion elimination process */
+}
+```
+
+For a production like "A -> Aα | β", the transformation results in:
+- "A -> βA'"
+- "A' -> αA' | ε"
+
+where A' is a new non-terminal.
+
+## 7. Symbol Identification
+
+After transforming the grammar, the program identifies all terminals and non-terminals using the `identify_symbols()` function:
+
+```c
+void identify_symbols() {
+    /* Extract terminals and non-terminals from the production rules */
+}
+```
+
+This function:
+1. Adds all non-terminals from the left-hand sides of productions
+2. Adds all terminals from the right-hand sides
+3. Adds '$' as a special terminal (end marker)
+
+## 8. FIRST Set Calculation
+
+The FIRST set of a symbol or string contains all terminals that can appear as the first symbol of any string derived from it. The program calculates FIRST sets using `findfirst()`:
+
+```c
+void findfirst(char c, int q1, int q2) {
+    /* Calculate FIRST set for a non-terminal */
+}
+```
+
+For a non-terminal A:
+1. If A → a... where a is a terminal, add a to FIRST(A)
+2. If A → B... where B is a non-terminal, add FIRST(B) to FIRST(A)
+3. If A → ε, add ε to FIRST(A)
+4. If A → B... and ε is in FIRST(B), add FIRST(next symbol) to FIRST(A)
+
+## 9. FOLLOW Set Calculation
+
+The FOLLOW set of a non-terminal A contains all terminals that can appear immediately to the right of A in any sentential form. The calculation uses `follow()` and `followfirst()`:
+
+```c
+void follow(char c) {
+    /* Calculate FOLLOW set for a non-terminal */
+}
+
+void followfirst(char c, int c1, int c2) {
+    /* Helper function for FOLLOW set calculation */
+}
+```
+
+For a non-terminal A:
+1. If A is the start symbol, add $ to FOLLOW(A)
+2. If there is a production B → αAβ, add FIRST(β) - {ε} to FOLLOW(A)
+3. If there is a production B → αA or B → αAβ where ε is in FIRST(β), add FOLLOW(B) to FOLLOW(A)
+
+## 10. Parsing Table Construction
+
+Using the calculated FIRST and FOLLOW sets, the program builds an LL(1) parsing table with `create_parsing_table()`:
+
+```c
+void create_parsing_table() {
+    /* Construct the LL(1) parsing table */
+}
+```
+
+For each production A → α:
+1. For each terminal a in FIRST(α), add A → α to table[A, a]
+2. If ε is in FIRST(α), for each terminal b in FOLLOW(A), add A → α to table[A, b]
+
+The parsing table is represented as a 3D array `parsing_table[10][10][10]`, where:
+- First dimension: index of non-terminal
+- Second dimension: index of terminal
+- Third dimension: the production string to use
+
+## 11. Implementation Details
+
+### Error Handling
+
+The program includes basic error handling, such as checking if the grammar file exists:
+
+```c
+FILE* file = fopen(filename, "r");
+if (file == NULL) {
+    printf("Error opening file: %s\n", filename);
+    exit(1);
+}
+```
+
+However, it does not include comprehensive error checking for invalid grammars or conflicts in the parsing table.
+
+### Memory Management
+
+The program uses fixed-size arrays for storing productions, sets, and the parsing table. This simplifies memory management but limits the size of grammars it can process.
+
+### Algorithm Complexity
+
+- Left factoring: O(n²) where n is the number of productions
+- Left recursion elimination: O(n²)
+- FIRST and FOLLOW set calculation: O(n²)
+- Parsing table construction: O(n × t) where t is the number of terminals
+
+## 12. Conclusion
+
+This program demonstrates the complete process of converting a context-free grammar into an LL(1) parsing table:
+
+1. It transforms the grammar through left factoring and left recursion elimination
+2. It calculates FIRST and FOLLOW sets using recursive algorithms
+3. It constructs a parsing table based on these sets
+
+The resulting parsing table can be used to implement an LL(1) parser that efficiently analyzes strings according to the grammar.
+
+While this implementation has limitations in terms of grammar size and error handling, it provides a clear illustration of the theoretical concepts behind LL(1) parsing.
